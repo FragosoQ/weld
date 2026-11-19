@@ -1092,7 +1092,7 @@ const ZONA_CONFIGS = [
     listSource: {
       tab: 'PS3',
       mode: 'range-row-headers',
-      range: 'CU1:DT2',
+      range: 'AL1:CJ2',
       matchValue: '3',
       hideHeader: true,
       gridLayout: { cols: 4, rows: 3, flow: 'column' },
@@ -1253,14 +1253,27 @@ async function fetchZonaListValues(source) {
     tab: source.tab,
     range: source.range,
   };
-  const table = await fetchSheetTable(cfg);
+  const table = source.mode === 'range-row-headers' ? null : await fetchSheetTable(cfg);
 
   if (source.mode === 'range-row-headers') {
-    if (!table || !Array.isArray(table.rows) || table.rows.length < 2) {
-      return [];
+    // O gviz infere o tipo por coluna: com 2 linhas (texto + número) a coluna
+    // fica 'number' e os cabeçalhos de texto vêm a null. Por isso lê-se a
+    // linha de cabeçalhos e a linha de valores em pedidos separados.
+    const m = String(source.range || '').match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+    let headerRow, valueRow;
+    if (m) {
+      const r1 = Number(m[2]);
+      const [hT, vT] = await Promise.all([
+        fetchSheetTable({ id: cfg.id, tab: cfg.tab, range: `${m[1]}${r1}:${m[3]}${r1}` }),
+        fetchSheetTable({ id: cfg.id, tab: cfg.tab, range: `${m[1]}${r1 + 1}:${m[3]}${r1 + 1}` }),
+      ]);
+      headerRow = hT && Array.isArray(hT.rows) ? hT.rows[0] : null;
+      valueRow = vT && Array.isArray(vT.rows) ? vT.rows[0] : null;
+    } else {
+      if (!table || !Array.isArray(table.rows) || table.rows.length < 2) return [];
+      headerRow = table.rows[0];
+      valueRow = table.rows[1];
     }
-    const headerRow = table.rows[0];
-    const valueRow = table.rows[1];
     if (!headerRow || !valueRow || !Array.isArray(headerRow.c) || !Array.isArray(valueRow.c)) {
       return [];
     }
